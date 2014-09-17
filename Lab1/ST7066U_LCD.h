@@ -1,3 +1,4 @@
+#include "CU_TM4C123.h"
 #include <stdint.h>
 
 #define LCD_DDRAM_LINE1_ADDR 0x80

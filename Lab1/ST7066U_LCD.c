@@ -1,4 +1,3 @@
-#include "CU_TM4C123.h"
 #include "ST7066U_LCD.h"
 
 void
@@ -61,25 +60,4 @@ LCD_write_str(char *str,uint8_t pos){
 	while(*str != '\0'){
 		LCD_write(RS_DATA,*(str++));	
 	}
-}
-
-int 
-main(void){
-	
-    // Enable lcd control and data GPIO ports
-		SYSCTL->RCGCGPIO |= LCD_CONTROL_PORT_RCGC | LCD_DATA_PORT_RCGC;	
-	  // Dummy read
-		SYSCTL->RCGCGPIO;
-	   
-		 //Set the direction and enable of all lcd control pins
-	  LCD_CONTROL_PORT->DIR |= LCD_CONTROL_RS_PIN | LCD_CONTROL_RW_PIN |  LCD_CONTROL_EN_PIN;  
-    LCD_CONTROL_PORT->DEN |= LCD_CONTROL_RS_PIN | LCD_CONTROL_RW_PIN |  LCD_CONTROL_EN_PIN;		
-	  
-	  //Enable all lcd data port pins
-    LCD_DATA_PORT->DEN = 0xFF;  
-
-	  LCD_init();
-	  LCD_write_str("Hello World!", LCD_DDRAM_LINE1_ADDR);		
-		while(1){			
-		} 	
 }
