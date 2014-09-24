@@ -27,3 +27,4 @@ void __LCD_write(uint8_t RS,uint8_t data,uint8_t wait);
 uint8_t LCD_read(uint8_t RS);
 void LCD_init(void);
 void LCD_write_str(char *str,uint8_t pos);
+void LCD_write_nstr(char *str, uint8_t n, uint8_t pos);

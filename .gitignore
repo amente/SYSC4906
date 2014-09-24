@@ -23,4 +23,5 @@
 *.iex
 .#*
 *.uvgui.*
+*.uvguix.*
 *.uvopt
