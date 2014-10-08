@@ -34,6 +34,12 @@ void GPIOF_Handler()
             
             SysTick->VAL = 1;   //W1C to reset SysTick
         }
+        
+        /*snprintf(buf, 16, "RawCount: %d", rawbuttoncnt);
+        LCD_write_str(buf, LCD_DDRAM_LINE1_ADDR);
+        snprintf(buf, 16, "Count: %d", buttoncnt);
+        LCD_write_str(buf, LCD_DDRAM_LINE2_ADDR);*/
+        
         GPIOF->ICR |= (1<<4);
     }
     else if ((GPIOF->MIS & (1<<0)))  // PF0
