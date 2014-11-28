@@ -75,12 +75,13 @@ main(void)
 	// SW1 & SW2
     GPIOF->LOCK = 0x4C4F434B;  // UNLOCK! 
     //lol v
-    *(uint32_t*)&GPIOF->CR |= 1<<0;  // COMMIT!
+    *(uint32_t*)&GPIOF->CR |= 1<<0;  // ENABLE COMMIT!
     GPIOF->DEN |= (1<<1) | (1<<4) | (1<<0);
     GPIOF->PUR |= (1<<4) | (1<<0);
     GPIOF->IM |= (1<<4) | (1<<0);
-    GPIOF->LOCK = 0x4C4F434B;  // UNLOCK!  
-    *(uint32_t*)&GPIOF->CR &= ~(1<<0);  // UNCOMMIT!
+	*(uint32_t*)&GPIOF->CR &= ~(1<<0);  // DISABLE COMMIT!
+    GPIOF->LOCK = 0x4C4F434B;  // LOCK!  
+    
     
 	//Set the direction and enable of all lcd control pins
 	LCD_CONTROL_PORT->DIR |= LCD_CONTROL_RS_PIN | LCD_CONTROL_RW_PIN |  LCD_CONTROL_EN_PIN;  
