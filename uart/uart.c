@@ -2,8 +2,9 @@
 #include <stdbool.h>
 
 #include "CU_TM4C123.h"
-#include "ringbuf.h"
 #include "uart.h"
+
+#define UART_IDX(uart)  (((uint32_t)uart - UART0_BASE) / sizeof(UART0_Type))
 
 void uart_int_off(UART0_Type *uart)
 {
@@ -20,8 +21,19 @@ void uart_int_on(UART0_Type *uart)
     Returns -1 if no init code is available  otherwise 0 for success
     Don't forget to implement the RX ISRs
 */
-int uart_init(UART0_Type *uart, uint16_t baud)
+static uint8_t __init[8] = {0};
+int uart_init(UART0_Type *uart, uint32_t baud)
 {
+    // check if module is already init
+    if (__init[UART_IDX(uart)])
+    {
+        return -1;
+    }
+    else
+    {
+        __init[UART_IDX(uart)] = 1;
+    }
+
     if (uart == UART0)
     {
         // UART0_RX = PA0
@@ -41,6 +53,34 @@ int uart_init(UART0_Type *uart, uint16_t baud)
         
         // enable the interrupt from the NVIC
         NVIC_EnableIRQ(UART0_IRQn);
+    }
+    else if (uart == UART2)
+    {
+        // UART2_RX = PD6
+        // UART2_TX = PD7 (requires unlock)
+
+        // enable clock to Port D
+        SYSCTL->RCGCGPIO |= SYSCTL_RCGCGPIO_R3;
+        // enable clock to UART2
+        SYSCTL->RCGCUART |= SYSCTL_RCGCUART_R2;
+
+        // unlock GPIOF so we can config PD7
+        GPIOD->LOCK = GPIO_LOCK_KEY;
+        // enable commit to PD7
+        *(volatile uint32_t *)&GPIOD->CR |= 1<<7;
+        // select the alternate function for PD6 & PD7
+        GPIOD->AFSEL |= (1<<6) | (1<<7);
+        // configure the pins to be U2RX & U2TX
+        GPIOD->PCTL |= GPIO_PCTL_PD6_U2RX | GPIO_PCTL_PD7_U2TX;
+        // enable the digital pad for PD6 & PD7
+        GPIOD->DEN |= (1<<6) | (1<<7);
+        // disable commit to PD7
+        *(volatile uint32_t *)&GPIOD->CR |= 1<<7;
+        // lock GPIOF
+        GPIOD->LOCK = 0;
+
+        // enable the interrupt from the NVIC
+        NVIC_EnableIRQ(UART2_IRQn);
     }
     else if (uart == UART5)
     {
@@ -69,20 +109,27 @@ int uart_init(UART0_Type *uart, uint16_t baud)
     }
         
     // calculate the int part of the baud rate divider
-    uart->IBRD = SystemCoreClock / (16 * baud);
+    uart->IBRD = SystemCoreClock / 16 / baud;
     // calculate the fractional part of the baud rate divider
-    uart->FBRD = (((SystemCoreClock / (16 * baud) << 7) + 1) >> 1) & UART_FBRD_DIVFRAC_M;
+    uart->FBRD = (((((SystemCoreClock << 3) / baud)) + 1) >> 1) & UART_FBRD_DIVFRAC_M;
     
     // configure the word length to be 8 bits
     uart->LCRH |= UART_LCRH_WLEN_8 | UART_LCRH_FEN;
     // set the RX FIFO Trigger level
     uart->IFLS |= FIFO_TRIG_LVL;
-    // enable RX interrupts
-    uart_int_on(uart);
+    // DO NOT DO THIS BY DEFAULT: enable RX interrupts
+    // uart_int_on(uart);
     // enable TX and RX
     uart->CTL |= UART_CTL_UARTEN;
     
     return 0;
+}
+
+void uart_uninit(UART0_Type *uart)
+{
+    // disable uart
+    uart->CTL &= ~UART_CTL_UARTEN;
+    __init[UART_IDX(uart)] = 0;
 }
 
 uint8_t uart_sendbyte(UART0_Type *uart, uint8_t b)
