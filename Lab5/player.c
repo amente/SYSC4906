@@ -56,6 +56,9 @@ void Player_Thread (void const *argument)
             }
         } while(nbytes > 0);
         
+        // let the GUI thread know the song is done
+        osSignalSet(GUIThreadId, GUI_SIG_NEXT);
+        
         skip:
         // done playing so we close the file
         f_close(&fil);

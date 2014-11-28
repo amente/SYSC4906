@@ -124,6 +124,7 @@ File_t* get_files(const TCHAR* path)
 void GUI_Thread (void const *argument)
 {
     File_t *cur_fp;
+    osEvent sig;
     
     // get the list of mp3s
     cur_fp = get_files("");
@@ -230,6 +231,29 @@ void GUI_Thread (void const *argument)
             
             // clear int
             GPIOE->ICR |= 1<<5;
+        }
+        
+        // check if the player is done playing
+        sig = osSignalWait(GUI_SIG_NEXT, 0);
+        if ( (sig.status == osEventSignal) && (sig.value.signals & GUI_SIG_NEXT) )
+        {
+            if (cur_fp->next != NULL)
+            {
+                cur_fp = cur_fp->next;
+                LCD_clear_1();
+                LCD_write_str(cur_fp->fname, LCD_DDRAM_LINE1_ADDR);
+
+                if (status == GUI_STATUS_PLAYING)
+                {
+                    PLAYER_PLAY(cur_fp->fname);
+                    cur_song = cur_fp->fname;
+                }
+            }
+            else
+            {
+                sta_stop();
+                status = GUI_STATUS_STOPPED;
+            }
         }
         
         osDelay(GUI_DELAY);
