@@ -1,0 +1,5 @@
+- MicroSD card should be decoupled with a 47uF cap
+- MicroSD card should not have the 33ohm resistor on Vcc
+- The input and output of the inverter for MP3_Fss to MP3_EN are reversed
+- COnfigure LCD LED resistor according to datasheet
+- Move the LCD contrast pot to a better location
