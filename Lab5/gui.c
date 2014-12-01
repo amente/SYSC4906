@@ -8,49 +8,72 @@
 #include "player.h"
 #include "gui.h"
 
+/* Global Vars */
 static uint8_t vol = (STA_VOL_MAX-STA_VOL_MIN)/2;
+static uint8_t status = GUI_STATUS_STOPPED;
+static char *cur_song;  // this keeps track of the current song playing
+static File_t *cur_fp;  // this keeps track of the current song selected
+static uint8_t btn_pressed = 0;
+
+/* This is the debouncing delay */
+#define BTN_DELAY 150
 
 void GUI_init()
 {
     // SW1, SW2 & SW3
     SYSCTL->RCGCGPIO |= SYSCTL_RCGCGPIO_R1;
     SYSCTL->RCGCGPIO;
-    
+
     GPIOB->DIR &= ~(1<<0 | 1<<1 | 1<<5);
     GPIOB->PUR |= 1<<0 | 1<<1 | 1<<5;
     GPIOB->IS &= ~(1<<0 | 1<<1 | 1<<5);
     GPIOB->IBE &= ~(1<<0 | 1<<1 | 1<<5);
     GPIOB->IEV &= ~(1<<0 | 1<<1 | 1<<5);
     GPIOB->DEN |= 1<<0 | 1<<1 | 1<<5;
-    GPIOB->ICR |= 1<<0 | 1<<1 | 1<<5;  // clear the interrupt since RIS will be used
-    
+    GPIOB->ICR |= 1<<0 | 1<<1 | 1<<5;
+    GPIOB->IM |= 1<<0 | 1<<1 | 1<<5;
+    NVIC_EnableIRQ(GPIOB_IRQn);
+
     // SW5 & SW6
     SYSCTL->RCGCGPIO |= SYSCTL_RCGCGPIO_R4;
     SYSCTL->RCGCGPIO;
-    
+
     GPIOE->DIR &= ~(1<<4 | 1<<5);
     GPIOE->PUR |= 1<<4 | 1<<5;
     GPIOE->IS &= ~(1<<4 | 1<<5);
     GPIOE->IBE &= ~(1<<4 | 1<<5);
     GPIOE->IEV &= ~(1<<4 | 1<<5);
     GPIOE->DEN |= 1<<4 | 1<<5;
-    GPIOB->ICR |= 1<<4 | 1<<5;
-    
-    // LCD_PWM
+    GPIOE->ICR |= 1<<4 | 1<<5;
+    GPIOE->IM |= 1<<4 | 1<<5;
+    NVIC_EnableIRQ(GPIOE_IRQn);
+
+    // LCD_PWM (M1PWM5, pwm2B', PF1)
     SYSCTL->RCGCGPIO |= SYSCTL_RCGCGPIO_R5;
-    SYSCTL->RCGCGPIO;
+    SYSCTL->RCGCPWM  |= SYSCTL_RCGCPWM_R1;
 
-    GPIOF->DIR |= 1<<1;
+    GPIOF->AFSEL |= 1<<1;
+    GPIOF->PCTL |= GPIO_PCTL_PF1_M1PWM5;
     GPIOF->DEN |= 1<<1;
-    GPIOF->DATA |= 1<<1;
-}
 
-typedef __packed struct File
-{
-    struct File *next;
-    struct File *prev;
-    char *fname;
-} File_t;
+    PWM1->_2_CTL = 0;
+    PWM1->_2_GENB = 0x80C;
+    PWM1->_2_LOAD = LCD_PWM_LOAD;
+    PWM1->_2_CMPB = LCD_PWM_HIGH;  // 100% duty
+    PWM1->_2_CTL |= 1<<0;
+    PWM1->ENABLE |= 1<<5;
+
+    // use Timer0 to debounce switches
+    SYSCTL->RCGCTIMER |= SYSCTL_RCGCTIMER_R0;
+    // set Timer0 to 32bit mode
+    TIMER0->CFG = TIMER_CFG_32_BIT_TIMER;
+    // one-shot mode
+    TIMER0->TAMR |= TIMER_TAMR_TAMR_1_SHOT;
+    // set timeout period in ms
+    TIMER0->TAILR = SystemCoreClock / 1000 * BTN_DELAY;
+    // fire timer once to timeout
+    TIMER0->CTL |= TIMER_CTL_TAEN;
+}
 
 File_t* get_files(const TCHAR* path)
 {
@@ -71,7 +94,7 @@ File_t* get_files(const TCHAR* path)
 
     if (f_opendir(&dir, path) != FR_OK)
         return NULL;
-    
+
     // while we can successfully read the dir and it's not the end
     while ( (f_readdir(&dir, &fno) == FR_OK) && (fno.fname[0] != '\0') )
     {
@@ -89,7 +112,7 @@ File_t* get_files(const TCHAR* path)
              (len < 5)              ||
              (strcmp(&fn[len-4], ".mp3")) )
             continue;
-        
+
         // allocate space for size of File_t struct and file name
         if ((cur_fp = (File_t*) malloc(sizeof(File_t)+len)) == NULL)
             break;
@@ -120,16 +143,146 @@ File_t* get_files(const TCHAR* path)
             prev_fp = cur_fp;
         }
     }  // while (...)
-    
+
     f_closedir(&dir);
-    
+
     // return the head of the linked list
     return first_fp;
 }
-    
-/* this delay gives the Player thread time to run and debounces the switches */
-#define GUI_DELAY 500
-    
+
+void GPIOB_Handler()
+{
+    // check if the delay has passed
+    if (TIMER0->RIS & TIMER_RIS_TATORIS)
+    {
+        // assume a button was pressed
+        btn_pressed = 1;
+
+        if (GPIOB->MIS & (1<<0))
+        {
+            /* Vol+ (SW2) */
+            if (vol < STA_VOL_MAX)
+                sta_set_vol(++vol);
+
+            // clear int
+            GPIOB->ICR |= 1<<0;
+        }
+        else if (GPIOB->MIS & (1<<5))
+        {
+            /* VOl- (SW1) */
+            if (vol > STA_VOL_MIN)
+                sta_set_vol(--vol);
+
+            // clear int
+            GPIOB->ICR |= 1<<5;
+        }
+        else if (GPIOB->RIS & (1<<1))
+        {
+            /* Next (SW3) */
+            if (cur_fp->next != NULL)
+            {
+                cur_fp = cur_fp->next;
+                LCD_clear_1();
+                LCD_write_str(cur_fp->fname, LCD_DDRAM_LINE1_ADDR);
+
+                if (status == GUI_STATUS_PLAYING)
+                {
+                    osSignalSet(PlayerThreadId, PLAYER_SIG_SKIP);
+                    PLAYER_PLAY(cur_fp->fname);
+                    cur_song = cur_fp->fname;
+                }
+            }
+
+            // clear int
+            GPIOB->ICR |= 1<<1;
+        }
+        // no buttons were pressed therefore...
+        else
+        {
+            btn_pressed = 0;
+        }
+
+        // reset the timer
+        TIMER0->ICR |= TIMER_ICR_TATOCINT;
+        TIMER0->CTL |= TIMER_CTL_TAEN;
+    }
+    else
+    {
+        // no timeout yet so we reset all int
+        GPIOB->ICR |= 1<<0 | 1<<1 | 1<<5;
+    }
+}
+
+void GPIOE_Handler()
+{
+
+    // check if the delay has passed
+    if (TIMER0->RIS & TIMER_RIS_TATORIS)
+    {
+        // assume a button was pressed
+        btn_pressed = 1;
+
+        if (GPIOE->MIS & (1<<4))
+        {
+            /* Play/Pause (SW4) */
+            if (status == GUI_STATUS_STOPPED)
+            {
+                // if the song had changed
+                if ( (cur_song != cur_fp->fname) && (Player_State == PLAYER_STATE_PLAYING) )
+                {
+                    osSignalSet(PlayerThreadId, PLAYER_SIG_SKIP);
+                }
+                PLAYER_PLAY(cur_fp->fname);
+                cur_song = cur_fp->fname;
+                sta_play();
+                status = GUI_STATUS_PLAYING;
+            }
+            else if (status == GUI_STATUS_PLAYING)
+            {
+                sta_stop();
+                status = GUI_STATUS_STOPPED;
+            }
+        }
+        else if (GPIOE->RIS & (1<<5))
+        {
+            /* Prev (SW5) */
+            if (cur_fp->prev != NULL)
+            {
+                cur_fp = cur_fp->prev;
+                LCD_clear_1();
+                LCD_write_str(cur_fp->fname, LCD_DDRAM_LINE1_ADDR);
+
+                if (status == GUI_STATUS_PLAYING)
+                {
+                    osSignalSet(PlayerThreadId, PLAYER_SIG_SKIP);
+                    PLAYER_PLAY(cur_fp->fname);
+                    cur_song = cur_fp->fname;
+                }
+            }
+
+            // clear int
+            GPIOE->ICR |= 1<<5;
+        }
+        // no buttons were pressed therefore...
+        else
+        {
+            btn_pressed = 0;
+        }
+
+        // reset the timer
+        TIMER0->ICR |= TIMER_ICR_TATOCINT;
+        TIMER0->CTL |= TIMER_CTL_TAEN;
+    }
+
+    // clear int
+    GPIOE->ICR |= 1<<4 | 1<<5;
+}
+
+/* shouldn't be too small... */
+#define GUI_DELAY   100
+/* how many multiples of GUI_DELAY before LCD timeout */
+#define DELAY_MUL   50      // timeout is about GUI_DELAY * DELAY_MUL in milliseconds
+
 void GUI_Thread (void const *argument)
 {
     /**
@@ -138,11 +291,8 @@ void GUI_Thread (void const *argument)
         are on the top dir and there's subdirs are not supported.
     */
 
-    static uint8_t status = GUI_STATUS_STOPPED;
-    static char *cur_song;
-
-    File_t *cur_fp;
     osEvent sig;
+    uint32_t lcd_timeout = 0;
 
     // get the list of mp3s
     cur_fp = get_files("");
@@ -163,103 +313,6 @@ void GUI_Thread (void const *argument)
 
     while(1)
     {
-        /** 
-            below are the code to handle button presses. 
-            the buttons are polled because it greatly simplifies code dev
-            (interrupts and RTOSes can get a bit complicated)
-            and the real time requirements are very lenient.
-        */
-            
-        if (GPIOB->RIS & (1<<0))
-        {
-            /* Vol+ (SW2) */
-            if (vol < STA_VOL_MAX)
-                sta_set_vol(++vol);
-            
-            // clear int
-            GPIOB->ICR |= 1<<0;
-        }
-        else if (GPIOB->RIS & (1<<5))
-        {
-            /* VOl- (SW1) */
-            if (vol > STA_VOL_MIN)
-                sta_set_vol(--vol);
-            
-            // clear int
-            GPIOB->ICR |= 1<<5;
-        }    
-        else if (GPIOB->RIS & (1<<1))
-        {
-            /* Next (SW3) */
-            if (cur_fp->next != NULL)
-            {
-                cur_fp = cur_fp->next;
-                LCD_clear_1();
-                LCD_write_str(cur_fp->fname, LCD_DDRAM_LINE1_ADDR);
-
-                if (status == GUI_STATUS_PLAYING)
-                {
-                    osSignalSet(PlayerThreadId, PLAYER_SIG_SKIP);
-                    PLAYER_PLAY(cur_fp->fname);
-                    cur_song = cur_fp->fname;
-                }
-            }
-            
-            // clear int
-            GPIOB->ICR |= 1<<1;
-        }
-        else if (GPIOE->RIS & (1<<4))
-        {
-            /* Play/Pause (SW4) */
-            if (status == GUI_STATUS_STOPPED)
-            {
-                // if no songs have played
-                if (cur_song == NULL)
-                {
-                    // don't skip
-                    PLAYER_PLAY(cur_fp->fname);
-                    cur_song = cur_fp->fname;
-                }
-                // if the song had changed
-                else if (cur_song != cur_fp->fname)
-                {
-                    osSignalSet(PlayerThreadId, PLAYER_SIG_SKIP);
-                    PLAYER_PLAY(cur_fp->fname);
-                    cur_song = cur_fp->fname;
-                }
-                sta_play();
-                status = GUI_STATUS_PLAYING;
-            }
-            else if (status == GUI_STATUS_PLAYING)
-            {
-                sta_stop();
-                status = GUI_STATUS_STOPPED;
-            }
-
-            // clear int
-            GPIOE->ICR |= 1<<4;
-        }
-        else if (GPIOE->RIS & (1<<5))
-        {
-            /* Prev (SW5) */
-            if (cur_fp->prev != NULL)
-            {
-                cur_fp = cur_fp->prev;
-                LCD_clear_1();
-                LCD_write_str(cur_fp->fname, LCD_DDRAM_LINE1_ADDR);
-
-                if (status == GUI_STATUS_PLAYING)
-                {
-                    osSignalSet(PlayerThreadId, PLAYER_SIG_SKIP);
-                    PLAYER_PLAY(cur_fp->fname);
-                    cur_song = cur_fp->fname;
-                }
-            }
-            
-            // clear int
-            GPIOE->ICR |= 1<<5;
-        }
-
         // check if the player is done playing
         sig = osSignalWait(GUI_SIG_NEXT, 0);
         if ( (sig.status == osEventSignal) && (sig.value.signals & GUI_SIG_NEXT) )
@@ -281,7 +334,26 @@ void GUI_Thread (void const *argument)
                 sta_stop();
                 status = GUI_STATUS_STOPPED;
             }
+
+            // emulate a button press so the screen would light up
+            btn_pressed = 1;
         }
+
+        /* light up the screen if any of the buttons were pressed */
+        if (btn_pressed)
+        {
+            // light up the screen
+            PWM1->_2_CMPB = LCD_PWM_HIGH;
+            // reset timeout
+            lcd_timeout = 0;
+            btn_pressed = 0;
+        }
+        else if (lcd_timeout == DELAY_MUL)
+        {
+            // timeout, so we dimm the screen
+            PWM1->_2_CMPB = LCD_PWM_LOW;
+        }        
+        ++lcd_timeout;  // will take a while before uint32_t rolls over
 
         osDelay(GUI_DELAY);
     }

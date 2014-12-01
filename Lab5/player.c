@@ -7,6 +7,9 @@
 #include "gui.h"
 #include "spi.h"
 
+// this is used to check the state of the player externally 
+uint8_t Player_State;
+
 // this should be multiples of 512 due to SD card block sizes
 static uint8_t block[512];
 static UINT nbytes;
@@ -20,6 +23,9 @@ void Player_Thread (void const *argument)
     /* assume the STA013 is already init'd */
     while(1)
     {
+        // set state to waiting
+        Player_State = PLAYER_STATE_WAITING;
+        
         // wait for a path to a file to play
         msg = osMessageGet(PlayerMsgQId, osWaitForever);
         
@@ -27,6 +33,9 @@ void Player_Thread (void const *argument)
         if ( (msg.value.p == NULL) || (f_open(&fil, msg.value.p, FA_READ) != FR_OK) )
             // fail silently
             continue;
+        
+        // set state to playing
+        Player_State = PLAYER_STATE_PLAYING;
         
         // start playing the file
         do
