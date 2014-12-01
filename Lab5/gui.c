@@ -10,13 +10,13 @@
 
 /* Global Vars */
 static uint8_t vol = (STA_VOL_MAX-STA_VOL_MIN)/2;
-static uint8_t status = GUI_STATUS_STOPPED;
+static uint8_t GUI_Status = GUI_STATUS_STOPPED;
 static char *cur_song;  // this keeps track of the current song playing
 static File_t *cur_fp;  // this keeps track of the current song selected
 static uint8_t btn_pressed = 0;
 
 /* This is the debouncing delay */
-#define BTN_DELAY 150
+#define BTN_DELAY 200
 
 void GUI_init()
 {
@@ -176,7 +176,7 @@ void GPIOB_Handler()
             // clear int
             GPIOB->ICR |= 1<<5;
         }
-        else if (GPIOB->RIS & (1<<1))
+        else if (GPIOB->MIS & (1<<1))
         {
             /* Next (SW3) */
             if (cur_fp->next != NULL)
@@ -185,7 +185,7 @@ void GPIOB_Handler()
                 LCD_clear_1();
                 LCD_write_str(cur_fp->fname, LCD_DDRAM_LINE1_ADDR);
 
-                if (status == GUI_STATUS_PLAYING)
+                if (GUI_Status == GUI_STATUS_PLAYING)
                 {
                     osSignalSet(PlayerThreadId, PLAYER_SIG_SKIP);
                     PLAYER_PLAY(cur_fp->fname);
@@ -225,25 +225,33 @@ void GPIOE_Handler()
         if (GPIOE->MIS & (1<<4))
         {
             /* Play/Pause (SW4) */
-            if (status == GUI_STATUS_STOPPED)
+            if (GUI_Status == GUI_STATUS_STOPPED)
             {
-                // if the song had changed
-                if ( (cur_song != cur_fp->fname) && (Player_State == PLAYER_STATE_PLAYING) )
+                // if the player is waiting for a song
+                if (Player_State == PLAYER_STATE_WAITING)
                 {
-                    osSignalSet(PlayerThreadId, PLAYER_SIG_SKIP);
+                    PLAYER_PLAY(cur_fp->fname);
+                    cur_song = cur_fp->fname;
                 }
-                PLAYER_PLAY(cur_fp->fname);
-                cur_song = cur_fp->fname;
+                // if a new song is selected
+                else if (cur_song != cur_fp->fname)
+                {
+                    // skip the current song and queue the next song
+                    osSignalSet(PlayerThreadId, PLAYER_SIG_SKIP);
+                    PLAYER_PLAY(cur_fp->fname);
+                    cur_song = cur_fp->fname;
+                }
+                // otherwise resume playing 
                 sta_play();
-                status = GUI_STATUS_PLAYING;
+                GUI_Status = GUI_STATUS_PLAYING;
             }
-            else if (status == GUI_STATUS_PLAYING)
+            else if (GUI_Status == GUI_STATUS_PLAYING)
             {
                 sta_stop();
-                status = GUI_STATUS_STOPPED;
+                GUI_Status = GUI_STATUS_STOPPED;
             }
         }
-        else if (GPIOE->RIS & (1<<5))
+        else if (GPIOE->MIS & (1<<5))
         {
             /* Prev (SW5) */
             if (cur_fp->prev != NULL)
@@ -252,7 +260,7 @@ void GPIOE_Handler()
                 LCD_clear_1();
                 LCD_write_str(cur_fp->fname, LCD_DDRAM_LINE1_ADDR);
 
-                if (status == GUI_STATUS_PLAYING)
+                if (GUI_Status == GUI_STATUS_PLAYING)
                 {
                     osSignalSet(PlayerThreadId, PLAYER_SIG_SKIP);
                     PLAYER_PLAY(cur_fp->fname);
@@ -323,7 +331,7 @@ void GUI_Thread (void const *argument)
                 LCD_clear_1();
                 LCD_write_str(cur_fp->fname, LCD_DDRAM_LINE1_ADDR);
 
-                if (status == GUI_STATUS_PLAYING)
+                if (GUI_Status == GUI_STATUS_PLAYING)
                 {
                     PLAYER_PLAY(cur_fp->fname);
                     cur_song = cur_fp->fname;
@@ -332,7 +340,7 @@ void GUI_Thread (void const *argument)
             else
             {
                 sta_stop();
-                status = GUI_STATUS_STOPPED;
+                GUI_Status = GUI_STATUS_STOPPED;
             }
 
             // emulate a button press so the screen would light up
