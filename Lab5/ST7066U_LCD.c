@@ -83,7 +83,7 @@ LCD_write_str(char *str, uint8_t pos){
 void 
 LCD_write_nstr(char *str, uint8_t n, uint8_t pos){
     LCD_write(RS_ADDR,pos);
-    for(; n>0; n--)
+    for(; (n>0)&&(*str!='\0'); n--)
     {
         LCD_write(RS_DATA,*(str++));    
     }

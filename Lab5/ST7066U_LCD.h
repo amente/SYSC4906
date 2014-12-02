@@ -37,6 +37,8 @@
 #define LCD_clear_1()           LCD_write_str("                ", LCD_DDRAM_LINE1_ADDR)
 #define LCD_clear_2()           LCD_write_str("                ", LCD_DDRAM_LINE2_ADDR)
 
+#define LCD_MAX_WIDTH           16
+
 void __LCD_write(uint8_t RS,uint8_t data,uint8_t wait);
 uint8_t LCD_read(uint8_t RS);
 void LCD_init(void);
