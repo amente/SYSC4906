@@ -3,6 +3,7 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include "fatfs/ff.h"
 #include "ST7066U_LCD.h"
 #include "player.h"
@@ -14,6 +15,8 @@ static uint8_t GUI_Status = GUI_STATUS_STOPPED;
 static char *cur_song;  // this keeps track of the current song playing
 static File_t *cur_fp;  // this keeps track of the current song selected
 static uint8_t btn_pressed = 0;
+static uint16_t len, count = 1;
+static char buf[17] = {0};
 
 /* This is the debouncing delay */
 #define BTN_DELAY 200
@@ -75,7 +78,7 @@ void GUI_init()
     TIMER0->CTL |= TIMER_CTL_TAEN;
 }
 
-File_t* get_files(const TCHAR* path)
+uint16_t get_files(const TCHAR* path, File_t** first_fp)
 {
     /**
         This function dynamically creates a doubly-linked list of only mp3 files
@@ -83,17 +86,20 @@ File_t* get_files(const TCHAR* path)
     */
     DIR dir;
     FILINFO fno;
-    uint16_t len;
+    uint16_t fnlen, len = 0;
     char *fn;
-    File_t *cur_fp, *prev_fp = NULL, *first_fp = NULL;
+    File_t *cur_fp, *prev_fp = NULL;
 #if _USE_LFN
     static char lfn[_MAX_LFN + 1];   /* Buffer to store the LFN */
     fno.lfname = lfn;
     fno.lfsize = sizeof lfn;
-#endif    
+#endif
+
+    // set first to NULL for now
+    *first_fp = NULL;
 
     if (f_opendir(&dir, path) != FR_OK)
-        return NULL;
+        return 0;
 
     // while we can successfully read the dir and it's not the end
     while ( (f_readdir(&dir, &fno) == FR_OK) && (fno.fname[0] != '\0') )
@@ -105,16 +111,16 @@ File_t* get_files(const TCHAR* path)
             fn = fno.fname;
 #endif
 
-        len = strlen(fn);
+        fnlen = strlen(fn);
 
         // skip dir and non mp3 files
-        if ( (fno.fattrib & AM_DIR) ||
-             (len < 5)              ||
-             (strcmp(&fn[len-4], ".mp3")) )
+        if ( (fno.fattrib & AM_DIR)             ||
+             (fnlen < 4)                        ||
+            !(strcmp(&fn[fnlen-3], ".mp3")) )
             continue;
 
         // allocate space for size of File_t struct and file name
-        if ((cur_fp = (File_t*) malloc(sizeof(File_t)+len)) == NULL)
+        if ((cur_fp = (File_t*) malloc(sizeof(File_t)+fnlen)) == NULL)
             break;
 
         // point fname to the address right after Filt_t
@@ -123,18 +129,20 @@ File_t* get_files(const TCHAR* path)
         strcpy(cur_fp->fname, fn);
         // cur_fp is the end of the list
         cur_fp->next = NULL;
+        // increase the len count
+        ++len;
 
         // if the list is empty
-        if (first_fp == NULL)
+        if (*first_fp == NULL)
         {
-            first_fp = cur_fp;
-            first_fp->prev = NULL;
+            *first_fp = cur_fp;
+            (*first_fp)->prev = NULL;
         }
         // if there's only one item in the list
         else if (prev_fp == NULL)
         {
-            first_fp->next = prev_fp = cur_fp;
-            prev_fp->prev = first_fp;
+            (*first_fp)->next = prev_fp = cur_fp;
+            prev_fp->prev = *first_fp;
         }
         else
         {
@@ -147,7 +155,16 @@ File_t* get_files(const TCHAR* path)
     f_closedir(&dir);
 
     // return the head of the linked list
-    return first_fp;
+    return len;
+}
+
+__inline void display_song()
+{
+    snprintf(buf, LCD_MAX_WIDTH, "%u/%u", count, len);
+    LCD_clear_1();
+    LCD_write_nstr(cur_fp->fname, LCD_MAX_WIDTH, LCD_DDRAM_LINE1_ADDR);
+    LCD_clear_2();
+    LCD_write_nstr(buf, LCD_MAX_WIDTH, LCD_DDRAM_LINE2_ADDR);
 }
 
 void GPIOB_Handler()
@@ -181,9 +198,9 @@ void GPIOB_Handler()
             /* Next (SW3) */
             if (cur_fp->next != NULL)
             {
+                ++count;
                 cur_fp = cur_fp->next;
-                LCD_clear_1();
-                LCD_write_str(cur_fp->fname, LCD_DDRAM_LINE1_ADDR);
+                display_song();
 
                 if (GUI_Status == GUI_STATUS_PLAYING)
                 {
@@ -241,7 +258,7 @@ void GPIOE_Handler()
                     PLAYER_PLAY(cur_fp->fname);
                     cur_song = cur_fp->fname;
                 }
-                // otherwise resume playing 
+                // otherwise resume playing
                 sta_play();
                 GUI_Status = GUI_STATUS_PLAYING;
             }
@@ -256,9 +273,9 @@ void GPIOE_Handler()
             /* Prev (SW5) */
             if (cur_fp->prev != NULL)
             {
+                --count;
                 cur_fp = cur_fp->prev;
-                LCD_clear_1();
-                LCD_write_str(cur_fp->fname, LCD_DDRAM_LINE1_ADDR);
+                display_song();
 
                 if (GUI_Status == GUI_STATUS_PLAYING)
                 {
@@ -303,14 +320,13 @@ void GUI_Thread (void const *argument)
     uint32_t lcd_timeout = 0;
 
     // get the list of mp3s
-    cur_fp = get_files("");
+    len = get_files("", &cur_fp);
 
-    LCD_clear_1();
     // see if there's at least one song
     if (cur_fp != NULL)
     {
         // if so, display the song
-        LCD_write_str(cur_fp->fname, LCD_DDRAM_LINE1_ADDR);
+        display_song();
     }
     else
     {
@@ -327,9 +343,9 @@ void GUI_Thread (void const *argument)
         {
             if (cur_fp->next != NULL)
             {
+                ++count;
                 cur_fp = cur_fp->next;
-                LCD_clear_1();
-                LCD_write_str(cur_fp->fname, LCD_DDRAM_LINE1_ADDR);
+                display_song();
 
                 if (GUI_Status == GUI_STATUS_PLAYING)
                 {
@@ -360,7 +376,7 @@ void GUI_Thread (void const *argument)
         {
             // timeout, so we dimm the screen
             PWM1->_2_CMPB = LCD_PWM_LOW;
-        }        
+        }
         ++lcd_timeout;  // will take a while before uint32_t rolls over
 
         osDelay(GUI_DELAY);
