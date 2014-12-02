@@ -18,11 +18,11 @@ LCD_read(uint8_t RS)
     LCD_RS(RS);
     LCD_RW(1);    
     LCD_EN(1);
-    buf = LCD_DATA_PORT->DATA;
     LCD_EN(0);
+    buf = LCD_DATA_PORT->DATA & 0xF0;
     LCD_EN(1);
-    buf |= LCD_DATA_PORT->DATA >> 4;
     LCD_EN(0);
+    buf |= LCD_DATA_PORT->DATA >> 4;
     return buf;
 }
 
