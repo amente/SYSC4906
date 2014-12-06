@@ -76,7 +76,7 @@
 //   <i> Defines the combined stack size for threads with user-provided stack size.
 //   <i> Default: 0
 #ifndef OS_PRIVSTKSIZE
- #define OS_PRIVSTKSIZE 512     // this stack size value is in words
+ #define OS_PRIVSTKSIZE 768     // this stack size value is in words
 #endif
  
 //   <q>Check for stack overflow

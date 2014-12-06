@@ -28,7 +28,7 @@ osThreadDef (Player_Thread, osPriorityNormal, 1, 2048);
 
 extern void GUI_Thread (void const *argument);
 extern osThreadId  GUIThreadId;
-osThreadDef (GUI_Thread, osPriorityNormal, 1, 0);
+osThreadDef (GUI_Thread, osPriorityNormal, 1, 1024);
 
 // global 'semaphores' ----------------------------------------------------------
 /* 
