@@ -16,7 +16,6 @@ static char *cur_song;  // this keeps track of the current song playing
 static File_t *cur_fp;  // this keeps track of the current song selected
 static uint8_t btn_pressed = 0;
 static uint16_t len, count = 1;
-static char buf[17] = {0};
 
 /* This is the debouncing delay */
 #define BTN_DELAY 200
@@ -123,6 +122,8 @@ uint16_t get_files(const TCHAR* path, File_t** first_fp)
         if ((cur_fp = (File_t*) malloc(sizeof(File_t)+fnlen)) == NULL)
             break;
 
+        // record the file size in bytes
+        cur_fp->fsize = fno.fsize;
         // point fname to the address right after Filt_t
         cur_fp->fname = (char*)cur_fp+sizeof(File_t);
         // copy the fname
@@ -158,13 +159,44 @@ uint16_t get_files(const TCHAR* path, File_t** first_fp)
     return len;
 }
 
-__inline void display_song()
+void display_song()
 {
+    uint8_t fnlen, szlen, offset;
+    char buf[LCD_MAX_WIDTH+1];
+
+    // clear screen
+    LCD_write(RS_ADDR, 0x01);
+
+    // find the len of the song name
+    fnlen = strlen(cur_fp->fname);
+    // don't display the file extension (ie. '.mp3') by terminating at the '.'
+    cur_fp->fname[fnlen-4] = '\0';
+    // adjust the len
+    fnlen -= 4;
+    // calculate the offset for centering (+1 for rounding)
+    if (fnlen < LCD_MAX_WIDTH-2)
+        offset = (LCD_MAX_WIDTH+1-fnlen) / 2;
+    else
+        offset = 0;
+    // display the song name with offset
+    LCD_write_nstr(cur_fp->fname, LCD_MAX_WIDTH, LCD_DDRAM_LINE1_ADDR+offset);
+    // put the '.' back
+    cur_fp->fname[fnlen] = '.';
+
+    // display song count
     snprintf(buf, LCD_MAX_WIDTH, "%u/%u", count, len);
-    LCD_clear_1();
-    LCD_write_nstr(cur_fp->fname, LCD_MAX_WIDTH, LCD_DDRAM_LINE1_ADDR);
-    LCD_clear_2();
     LCD_write_nstr(buf, LCD_MAX_WIDTH, LCD_DDRAM_LINE2_ADDR);
+
+    // display file size
+    if (cur_fp->fsize >= 1024*1024)
+        // display file size in MB
+        szlen = snprintf(buf, LCD_MAX_WIDTH, "%.2f MB", cur_fp->fsize / (1024.0 * 1024.0));
+    else
+        // display file size in KB
+        szlen = snprintf(buf, LCD_MAX_WIDTH, "%.2f KB", cur_fp->fsize / 1024.0);
+
+    // display the file size with offset
+    LCD_write_nstr(buf, LCD_MAX_WIDTH, LCD_DDRAM_LINE2_ADDR+(LCD_MAX_WIDTH-szlen));
 }
 
 void GPIOB_Handler()

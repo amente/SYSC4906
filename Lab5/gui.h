@@ -1,11 +1,14 @@
 #ifndef __GUI_H
 #define __GUI_H
 
+#include "fatfs/integer.h"
+
 typedef __packed struct File
 {
     struct File *next;
     struct File *prev;
     char *fname;
+    DWORD fsize;
 } File_t;
 
 #define GUI_STATUS_PLAYING  0
