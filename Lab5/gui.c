@@ -197,7 +197,7 @@ void display_song()
 }
 
 void display_volume(){
-    
+    // Assume vol is two digits
     char buf[2];   
     uint8_t i;    
     i = vol;
@@ -207,7 +207,11 @@ void display_volume(){
     
     // clear screen
     LCD_write(RS_ADDR, 0x01);
-    LCD_write_nstr(buf,2,LCD_DDRAM_LINE1_ADDR+7);
+    if(i == 0){
+       LCD_write_str("Mute",LCD_DDRAM_LINE1_ADDR+6);
+    }else{
+        LCD_write_nstr(buf,2,LCD_DDRAM_LINE1_ADDR+7);
+    }
     LCD_write(RS_ADDR,LCD_DDRAM_LINE2_ADDR+3);
     while(i-- > 0) LCD_write(RS_DATA,255);    
 }
