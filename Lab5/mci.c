@@ -102,19 +102,32 @@ int mci_wait_reply(MCI_REPLY_TYPE type, MCI_REPLY *reply, uint8_t tries)
     return -1;
 }
 
-#define mci_dummy_clocks()  spi_send(MCI_SPI, NULL, 10)
+_Bool mci_card_detect()
+{
+    // Assume PE1 is already init'd
+    return !(GPIOE->DATA & (1<<1));
+}
 
+#define mci_dummy_clocks()  spi_send(MCI_SPI, NULL, 10)
 DSTATUS mci_disk_initialize (void)
 {
     MCI_REPLY reply;
     int rc, t = 750;
-        
-    if (sd_info.sd_status & (STA_NOINIT | STA_NODISK))
-        return sd_info.sd_status;
     
-    sd_info.sd_status = STA_NOINIT | STA_NODISK;
+    sd_info.sd_status = STA_NOINIT;
     sd_info.sd_type = SD_UNKNOWN;
     
+    // init Card Detect on pin PE1
+    SYSCTL->RCGCGPIO |= SYSCTL_RCGCGPIO_R4;
+    SYSCTL->RCGCGPIO;
+    GPIOE->DIR &= ~(1<<1);
+    GPIOE->PUR |= 1<<1;
+    GPIOE->DEN |= 1<<1;
+
+    // check if card is present
+    if (!mci_card_detect())
+        return sd_info.sd_status |= STA_NODISK;
+
     // init spi
     spi_init(MCI_SPI, SPI_CLK_SLOW, SPI_MODE_3);
     // send out some dummy clocks to power up
@@ -156,7 +169,7 @@ DSTATUS mci_disk_initialize (void)
     else
         sd_info.sd_type = SD_V2_SC;
         
-    return sd_info.sd_status &= ~(STA_NODISK | STA_NOINIT);
+    return sd_info.sd_status &= ~STA_NOINIT;
 }
     
 DSTATUS mci_disk_status (void)

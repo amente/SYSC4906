@@ -63,5 +63,6 @@ DRESULT mci_disk_ioctl (BYTE cmd, void* buff);
 
 int mci_send_cmd(uint8_t cmd, uint32_t arg);
 int mci_wait_reply(MCI_REPLY_TYPE type, MCI_REPLY *reply, uint8_t tries);
+_Bool mci_card_detect(void);
 
 #endif

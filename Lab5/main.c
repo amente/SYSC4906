@@ -31,14 +31,6 @@ int main_init()
     LCD_init();
     LCD_write_str("Initializing...", LCD_DDRAM_LINE1_ADDR);
 #endif
-    
-    // init UART0
-    if (uart_init(UART0, 9600) == -1)
-        return -1;
-    
-    // init STA013
-    if (sta_init() == -1)
-        return -1;
 
     // init GUI
     GUI_init();
@@ -46,7 +38,15 @@ int main_init()
     // mount the sd card
     if (f_mount(&FatFs, "", 1) != FR_OK)
         return -1;
-    
+
+    // init UART0
+    if (uart_init(UART0, 9600) == -1)
+        return -1;
+
+    // init STA013
+    if (sta_init() == -1)
+        return -1;
+
     return 0;
 }
 
@@ -59,8 +59,11 @@ int main (void)
     if (main_init() != 0)
     {
 #if USE_LCD
-        LCD_write_str("Init Failed!   ", LCD_DDRAM_LINE1_ADDR);
-        LCD_write_str("MP3 Halted :(", LCD_DDRAM_LINE2_ADDR);
+        if (!mci_card_detect())
+            LCD_write_str("Card Not Found! ", LCD_DDRAM_LINE1_ADDR);
+        else
+            LCD_write_str("Init Failed!    ", LCD_DDRAM_LINE1_ADDR);
+        LCD_write_str("MP3 Halted :(   ", LCD_DDRAM_LINE2_ADDR);
 #endif
         return -1;
     }
