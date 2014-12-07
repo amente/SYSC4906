@@ -16,9 +16,12 @@ static char *cur_song;  // this keeps track of the current song playing
 static File_t *cur_fp;  // this keeps track of the current song selected
 static uint8_t btn_pressed = 0;
 static uint16_t len, count = 1;
+static uint8_t spin_index = 0, spin_str[4] = {0x2f, 0x2d, LCD_FONT_BSLASH_CODE, 0x7c};
 
 /* This is the debouncing delay */
-#define BTN_DELAY 200
+#define BTN_DELAY   200
+/* Play with this value to adjust the spinning speed */
+#define SPIN_SPD    2
 
 void GUI_init()
 {
@@ -75,6 +78,9 @@ void GUI_init()
     TIMER0->TAILR = SystemCoreClock / 1000 * BTN_DELAY;
     // fire timer once to timeout
     TIMER0->CTL |= TIMER_CTL_TAEN;
+
+    // write the custom font to the LCD
+    LCD_write_nstr_f(LCD_FONT_BSLASH, 8, LCD_FONT_BSLASH_ADDR);
 }
 
 uint16_t get_files(const TCHAR* path, File_t** first_fp)
@@ -161,42 +167,32 @@ uint16_t get_files(const TCHAR* path, File_t** first_fp)
 
 void display_song()
 {
-    uint8_t fnlen, szlen, offset;
+    uint8_t fnlen, cntlen;
     char buf[LCD_MAX_WIDTH+1];
 
     // clear screen
     LCD_write(RS_ADDR, 0x01);
 
-    // find the len of the song name
-    fnlen = strlen(cur_fp->fname);
-    // don't display the file extension (ie. '.mp3') by terminating at the '.'
-    cur_fp->fname[fnlen-4] = '\0';
-    // adjust the len
-    fnlen -= 4;
-    // calculate the offset for centering (+1 for rounding)
-    if (fnlen < LCD_MAX_WIDTH-2)
-        offset = (LCD_MAX_WIDTH+1-fnlen) / 2;
-    else
-        offset = 0;
-    // display the song name with offset
-    LCD_write_nstr(cur_fp->fname, LCD_MAX_WIDTH, LCD_DDRAM_LINE1_ADDR+offset);
-    // put the '.' back
-    cur_fp->fname[fnlen] = '.';
+    // find the length before the '.mp3' extension
+    fnlen = strlen(cur_fp->fname) - 4;
+    if (fnlen > LCD_MAX_WIDTH)
+        fnlen = LCD_MAX_WIDTH;
+    // display the song name
+    LCD_write_nstr(cur_fp->fname, fnlen, LCD_DDRAM_LINE1_ADDR);
 
-    // display song count
-    snprintf(buf, LCD_MAX_WIDTH, "%u/%u", count, len);
-    LCD_write_nstr(buf, LCD_MAX_WIDTH, LCD_DDRAM_LINE2_ADDR);
-
-    // display file size
+    // format the file size
     if (cur_fp->fsize >= 1024*1024)
         // display file size in MB
-        szlen = snprintf(buf, LCD_MAX_WIDTH, "%.2f MB", cur_fp->fsize / (1024.0 * 1024.0));
+        snprintf(buf, LCD_MAX_WIDTH, "%.2f MB", cur_fp->fsize / (1024.0 * 1024.0));
     else
         // display file size in KB
-        szlen = snprintf(buf, LCD_MAX_WIDTH, "%.2f KB", cur_fp->fsize / 1024.0);
+        snprintf(buf, LCD_MAX_WIDTH, "%.2f KB", cur_fp->fsize / 1024.0);
+    // display the file size
+    LCD_write_nstr(buf, LCD_MAX_WIDTH, LCD_DDRAM_LINE2_ADDR);
 
-    // display the file size with offset
-    LCD_write_nstr(buf, LCD_MAX_WIDTH, LCD_DDRAM_LINE2_ADDR+(LCD_MAX_WIDTH-szlen));
+    // right justify and display the song count
+    cntlen = snprintf(buf, LCD_MAX_WIDTH, "%u/%u", count, len);
+    LCD_write_nstr(buf, LCD_MAX_WIDTH, LCD_DDRAM_LINE2_ADDR+LCD_MAX_WIDTH-cntlen);
 }
 
 void GPIOB_Handler()
@@ -349,7 +345,7 @@ void GUI_Thread (void const *argument)
     */
 
     osEvent sig;
-    uint32_t lcd_timeout = 0;
+    uint32_t spin_delay = 0, lcd_timeout = 0;
 
     // get the list of mp3s
     len = get_files("", &cur_fp);
@@ -410,6 +406,21 @@ void GUI_Thread (void const *argument)
             PWM1->_2_CMPB = LCD_PWM_LOW;
         }
         ++lcd_timeout;  // will take a while before uint32_t rolls over
+
+        /* spin animation */
+        if (GUI_Status == GUI_STATUS_PLAYING)
+        {
+            if (spin_delay == SPIN_SPD)
+            {
+                spin_index = (spin_index + 1) % 4;
+                spin_delay = 0;
+            }
+            else
+            {
+                ++spin_delay;
+            }
+        }
+        LCD_write_nstr_f((char*)&spin_str[spin_index], 1, LCD_DDRAM_LINE1_ADDR+LCD_MAX_WIDTH-1);
 
         osDelay(GUI_DELAY);
     }
