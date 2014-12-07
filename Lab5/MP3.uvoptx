@@ -25,7 +25,7 @@
     <ToolsetNumber>0x4</ToolsetNumber>
     <ToolsetName>ARM-ADS</ToolsetName>
     <TargetOption>
-      <CLKADS>12000000</CLKADS>
+      <CLKADS>16000000</CLKADS>
       <OPTTT>
         <gFlags>1</gFlags>
         <BeepAtEnd>1</BeepAtEnd>
@@ -114,6 +114,10 @@
       <TargetDriverDllRegistry>
         <SetRegEntry>
           <Number>0</Number>
+          <Key>DLGUARM</Key>
+        </SetRegEntry>
+        <SetRegEntry>
+          <Number>0</Number>
           <Key>lmidk-agdi</Key>
           <Name>-U0E20C19D -O4622 -S3 -FO61</Name>
         </SetRegEntry>
@@ -149,6 +153,11 @@
           <count>2</count>
           <WinNumber>1</WinNumber>
           <ItemText>start</ItemText>
+        </Ww>
+        <Ww>
+          <count>3</count>
+          <WinNumber>1</WinNumber>
+          <ItemText>cur_fp</ItemText>
         </Ww>
       </WatchWindow1>
       <MemoryWindow1>

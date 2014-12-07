@@ -17,6 +17,7 @@ static File_t *cur_fp;  // this keeps track of the current song selected
 static uint8_t btn_pressed = 0;
 static uint16_t len, count = 1;
 static uint8_t spin_index = 0, spin_str[4] = {0x2f, 0x2d, LCD_FONT_BSLASH_CODE, 0x7c};
+static uint8_t vol_btn_pressed = 0 , vol_displayed = 0;
 
 /* This is the debouncing delay */
 #define BTN_DELAY   200
@@ -195,6 +196,22 @@ void display_song()
     LCD_write_nstr(buf, LCD_MAX_WIDTH, LCD_DDRAM_LINE2_ADDR+LCD_MAX_WIDTH-cntlen);
 }
 
+void display_volume(){
+    
+    char buf[2];   
+    uint8_t i;    
+    i = vol;
+    
+    buf[1] = i%10 + '0';
+    buf[0] = i/10 + '0';
+    
+    // clear screen
+    LCD_write(RS_ADDR, 0x01);
+    LCD_write_nstr(buf,2,LCD_DDRAM_LINE1_ADDR+7);
+    LCD_write(RS_ADDR,LCD_DDRAM_LINE2_ADDR+3);
+    while(i-- > 0) LCD_write(RS_DATA,255);    
+}
+
 void GPIOB_Handler()
 {
     // check if the delay has passed
@@ -208,7 +225,7 @@ void GPIOB_Handler()
             /* Vol+ (SW2) */
             if (vol < STA_VOL_MAX)
                 sta_set_vol(++vol);
-
+            vol_btn_pressed = 1;
             // clear int
             GPIOB->ICR |= 1<<0;
         }
@@ -217,7 +234,7 @@ void GPIOB_Handler()
             /* VOl- (SW1) */
             if (vol > STA_VOL_MIN)
                 sta_set_vol(--vol);
-
+            vol_btn_pressed = 1;
             // clear int
             GPIOB->ICR |= 1<<5;
         }
@@ -335,7 +352,7 @@ void GPIOE_Handler()
 #define GUI_DELAY   100
 /* how many multiples of GUI_DELAY before LCD timeout */
 #define DELAY_MUL   50      // timeout is about GUI_DELAY * DELAY_MUL in milliseconds
-
+#define VOL_DELAY   10
 void GUI_Thread (void const *argument)
 {
     /**
@@ -399,11 +416,29 @@ void GUI_Thread (void const *argument)
             // reset timeout
             lcd_timeout = 0;
             btn_pressed = 0;
+            if(vol_btn_pressed){
+                display_volume(); 
+                vol_displayed = 1;  
+                vol_btn_pressed = 0;
+            }else{
+                display_song();
+                vol_displayed = 0;
+            }
+        }
+        // assume lcd_timeout is longer than vol_timeout
+        else if (lcd_timeout == VOL_DELAY)
+        {
+            // switch to song screen
+            // Also default display to song
+            if(vol_displayed){
+                display_song();
+                vol_displayed = 0;
+            }
         }
         else if (lcd_timeout == DELAY_MUL)
         {
             // timeout, so we dimm the screen
-            PWM1->_2_CMPB = LCD_PWM_LOW;
+            PWM1->_2_CMPB = LCD_PWM_LOW;            
         }
         ++lcd_timeout;  // will take a while before uint32_t rolls over
 
@@ -420,7 +455,9 @@ void GUI_Thread (void const *argument)
                 ++spin_delay;
             }
         }
-        LCD_write_nstr_f((char*)&spin_str[spin_index], 1, LCD_DDRAM_LINE1_ADDR+LCD_MAX_WIDTH-1);
+        if(!vol_displayed){
+            LCD_write_nstr_f((char*)&spin_str[spin_index], 1, LCD_DDRAM_LINE1_ADDR+LCD_MAX_WIDTH-1);
+        }
 
         osDelay(GUI_DELAY);
     }
