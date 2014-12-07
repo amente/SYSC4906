@@ -122,11 +122,11 @@ uint16_t get_files(const TCHAR* path, File_t** first_fp)
         // skip dir and non mp3 files
         if ( (fno.fattrib & AM_DIR)             ||
              (fnlen < 4)                        ||
-            !(strcmp(&fn[fnlen-3], ".mp3")) )
+             (strcmp(&fn[fnlen-4], ".mp3") != 0) )
             continue;
 
-        // allocate space for size of File_t struct and file name
-        if ((cur_fp = (File_t*) malloc(sizeof(File_t)+fnlen)) == NULL)
+        // allocate space for size of File_t struct and file name (+1 for null term char)
+        if ((cur_fp = (File_t*) malloc(sizeof(File_t)+fnlen+1)) == NULL)
             break;
 
         // record the file size in bytes
@@ -381,6 +381,7 @@ void GUI_Thread (void const *argument)
     {
         // otherwise display an error msg and quit
         LCD_write_str("<No Songs Found>", LCD_DDRAM_LINE1_ADDR);
+        LCD_write_str("MP3 Halted :(   ", LCD_DDRAM_LINE2_ADDR);
         return;
     }
 
