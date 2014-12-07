@@ -80,11 +80,22 @@ LCD_write_str(char *str, uint8_t pos){
     }
 }
 
+/* This function will write the min of either the null char or n chars */
 void 
 LCD_write_nstr(char *str, uint8_t n, uint8_t pos){
     LCD_write(RS_ADDR,pos);
     for(; (n>0)&&(*str!='\0'); n--)
     {
         LCD_write(RS_DATA,*(str++));    
+    }
+}
+
+/* This function will write n char even if its the null char*/
+void
+LCD_write_nstr_f(char *str, uint8_t n, uint8_t pos){
+    LCD_write(RS_ADDR,pos);
+    for(; n>0; n--)
+    {
+        LCD_write(RS_DATA,*(str++));
     }
 }

@@ -33,6 +33,9 @@
 #define LCD_FONT_X              "\x00\x1b\x0e\x04\x0e\x1b\x00\x00"
 #define LCD_FONT_X_CODE         1
 #define LCD_FONT_X_ADDR         (LCD_CGRAM_ADDR+8*LCD_FONT_X_CODE)
+#define LCD_FONT_BSLASH         "\x00\x10\x08\x04\x02\x01\x00\x00"
+#define LCD_FONT_BSLASH_CODE    2
+#define LCD_FONT_BSLASH_ADDR    (LCD_CGRAM_ADDR+8*LCD_FONT_BSLASH_CODE)
 
 #define LCD_clear_1()           LCD_write_str("                ", LCD_DDRAM_LINE1_ADDR)
 #define LCD_clear_2()           LCD_write_str("                ", LCD_DDRAM_LINE2_ADDR)
@@ -44,3 +47,4 @@ uint8_t LCD_read(uint8_t RS);
 void LCD_init(void);
 void LCD_write_str(char *str,uint8_t pos);
 void LCD_write_nstr(char *str, uint8_t n, uint8_t pos);
+void LCD_write_nstr_f(char *str, uint8_t n, uint8_t pos);
