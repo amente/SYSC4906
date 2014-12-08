@@ -23,6 +23,8 @@ static uint8_t vol_btn_pressed = 0 , vol_displayed = 0;
 #define BTN_DELAY   200
 /* Play with this value to adjust the spinning speed */
 #define SPIN_SPD    2
+/* Play with this value to adjust the song name scrolling speed */
+#define SCRL_SPD    5
 
 void GUI_init()
 {
@@ -131,6 +133,8 @@ uint16_t get_files(const TCHAR* path, File_t** first_fp)
 
         // record the file size in bytes
         cur_fp->fsize = fno.fsize;
+        // record the len of song name (fnlen - 4)
+        cur_fp->snlen = fnlen - 4;
         // point fname to the address right after Filt_t
         cur_fp->fname = (char*)cur_fp+sizeof(File_t);
         // copy the fname
@@ -168,18 +172,50 @@ uint16_t get_files(const TCHAR* path, File_t** first_fp)
 
 void display_song()
 {
-    uint8_t fnlen, cntlen;
+    // we can keep track of time because this function is called periodically
+    static uint8_t time = 0;
+    static uint8_t index = 0;
+
+    // clear the first row
+    LCD_clear_1();
+
+    // if song name is longer than screen width
+    if (cur_fp->snlen > LCD_MAX_WIDTH-2)
+    {
+        // display from index up to LCD_MAX_WIDTH-2
+        LCD_write_nstr(&(cur_fp->fname[index]), LCD_MAX_WIDTH-2, LCD_DDRAM_LINE1_ADDR);
+        // if it's time to scroll
+        if (time++ == SCRL_SPD)
+        {
+            // increment index and wrap around check
+            if ( (++index) + LCD_MAX_WIDTH-2 > cur_fp->snlen )
+                // wrap around
+                index = 0;
+            // reset time count
+            time = 0;
+        }
+    }
+    else
+    {
+        // display the song name
+        LCD_write_nstr(cur_fp->fname, cur_fp->snlen, LCD_DDRAM_LINE1_ADDR);
+        // reset time count
+        time = 0;
+        // reset index
+        index = 0;
+    }
+}
+
+void display_stats()
+{
+    uint8_t cntlen;
     char buf[LCD_MAX_WIDTH+1];
 
-    // clear screen
-    LCD_write(RS_ADDR, 0x01);
+    // display the song name here first to sync up the LCD update
+    display_song();
 
-    // find the length before the '.mp3' extension
-    fnlen = strlen(cur_fp->fname) - 4;
-    if (fnlen > LCD_MAX_WIDTH)
-        fnlen = LCD_MAX_WIDTH;
-    // display the song name
-    LCD_write_nstr(cur_fp->fname, fnlen, LCD_DDRAM_LINE1_ADDR);
+    // clear the second row
+    LCD_clear_2();
 
     // format the file size
     if (cur_fp->fsize >= 1024*1024)
@@ -201,10 +237,10 @@ void display_volume(){
     char buf[2];   
     uint8_t i;    
     i = vol;
-    
+
     buf[1] = i%10 + '0';
     buf[0] = i/10 + '0';
-    
+
     // clear screen
     LCD_write(RS_ADDR, 0x01);
     if(i == 0){
@@ -249,7 +285,7 @@ void GPIOB_Handler()
             {
                 ++count;
                 cur_fp = cur_fp->next;
-                display_song();
+                display_stats();
 
                 if (GUI_Status == GUI_STATUS_PLAYING)
                 {
@@ -324,7 +360,7 @@ void GPIOE_Handler()
             {
                 --count;
                 cur_fp = cur_fp->prev;
-                display_song();
+                display_stats();
 
                 if (GUI_Status == GUI_STATUS_PLAYING)
                 {
@@ -375,7 +411,7 @@ void GUI_Thread (void const *argument)
     if (cur_fp != NULL)
     {
         // if so, display the song
-        display_song();
+        display_stats();
     }
     else
     {
@@ -395,7 +431,7 @@ void GUI_Thread (void const *argument)
             {
                 ++count;
                 cur_fp = cur_fp->next;
-                display_song();
+                display_stats();
 
                 if (GUI_Status == GUI_STATUS_PLAYING)
                 {
@@ -426,7 +462,7 @@ void GUI_Thread (void const *argument)
                 vol_displayed = 1;  
                 vol_btn_pressed = 0;
             }else{
-                display_song();
+                display_stats();
                 vol_displayed = 0;
             }
         }
@@ -436,7 +472,7 @@ void GUI_Thread (void const *argument)
             // switch to song screen
             // Also default display to song
             if(vol_displayed){
-                display_song();
+                display_stats();
                 vol_displayed = 0;
             }
         }
@@ -461,6 +497,7 @@ void GUI_Thread (void const *argument)
             }
         }
         if(!vol_displayed){
+            display_song();
             LCD_write_nstr_f((char*)&spin_str[spin_index], 1, LCD_DDRAM_LINE1_ADDR+LCD_MAX_WIDTH-1);
         }
 

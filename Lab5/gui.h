@@ -8,6 +8,7 @@ typedef __packed struct File
     struct File *next;
     struct File *prev;
     char *fname;
+    uint8_t snlen;  // len of song name (fnlen - 4)
     DWORD fsize;
 } File_t;
 
