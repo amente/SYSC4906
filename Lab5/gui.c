@@ -23,8 +23,10 @@ static uint8_t vol_btn_pressed = 0 , vol_displayed = 0;
 #define BTN_DELAY   200
 /* Play with this value to adjust the spinning speed */
 #define SPIN_SPD    2
-/* Play with this value to adjust the song name scrolling speed */
+/* Play with these values to adjust the song name scrolling speed */
 #define SCRL_SPD    5
+#define EXT_DELAY   2
+
 
 void GUI_init()
 {
@@ -173,7 +175,7 @@ uint16_t get_files(const TCHAR* path, File_t** first_fp)
 void display_song()
 {
     // we can keep track of time because this function is called periodically
-    static uint8_t time = 0;
+    static uint8_t time = 0, extra = EXT_DELAY;
     static uint8_t index = 0;
 
     // clear the first row
@@ -187,10 +189,22 @@ void display_song()
         // if it's time to scroll
         if (time++ == SCRL_SPD)
         {
-            // increment index and wrap around check
-            if ( (++index) + LCD_MAX_WIDTH-2 > cur_fp->snlen )
-                // wrap around
-                index = 0;
+            // if we are in the front or the back
+            if ( (extra) && ((index == 0) || (index + LCD_MAX_WIDTH-2 == cur_fp->snlen)) )
+            {
+                // extra delay, don't scroll yet
+                --extra;
+            }
+            else
+            {
+                // increment index and wrap around check
+                if ( (++index) + LCD_MAX_WIDTH-2 > cur_fp->snlen )
+                    // wrap around
+                    index = 0;
+                // reset extra
+                extra = EXT_DELAY;
+            }
+
             // reset time count
             time = 0;
         }
